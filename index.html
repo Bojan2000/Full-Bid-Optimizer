@@ -1,0 +1,949 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Bulk Bid Shifter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one control rail on the left; on the right the campaign picker sits above a live preview of every bid that will change. Stacks to one column on phones. */
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --ink:#15201e; --muted:#5a6a67; --line:#d8e0de; --soft:#eaf0ee;
+  --accent:#0b6b5b; --accent-ink:#ffffff; --accent-soft:#dcefea;
+  --up:#17783f; --up-soft:#e0f3e8; --down:#b23b25; --down-soft:#fae6e1; --warn:#8a5a00; --warn-soft:#fbf0d8;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1514; --surface:#162120; --ink:#e4eeeb; --muted:#92a39f; --line:#2a3b38; --soft:#1d2b29;
+    --accent:#46c4a8; --accent-ink:#052019; --accent-soft:#17352f;
+    --up:#55cb8b; --up-soft:#173626; --down:#f08a72; --down-soft:#3a201a; --warn:#e5b459; --warn-soft:#352a12;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1514; --surface:#162120; --ink:#e4eeeb; --muted:#92a39f; --line:#2a3b38; --soft:#1d2b29;
+  --accent:#46c4a8; --accent-ink:#052019; --accent-soft:#17352f;
+  --up:#55cb8b; --up-soft:#173626; --down:#f08a72; --down-soft:#3a201a; --warn:#e5b459; --warn-soft:#352a12;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.5;
+  padding-block:24px 40px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1240px; margin:0 auto; display:flex; flex-direction:column; gap:20px}
+header h1{font-size:22px; line-height:1.2; font-weight:600; margin:0 0 4px; text-wrap:balance}
+header p{margin:0; color:var(--muted); max-width:70ch}
+.layout{display:grid; grid-template-columns:minmax(0,330px) minmax(0,1fr); gap:20px; align-items:start}
+.rail,.main{min-width:0}
+.main{display:flex; flex-direction:column; gap:20px}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:8px}
+.group{padding:16px; display:flex; flex-direction:column; gap:10px}
+.group + .group{border-top:1px solid var(--line)}
+h2,h3{margin:0}
+.label{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+.hint{color:var(--muted); font-size:12.5px}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+button,input,select{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn{
+  border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:7px 12px; cursor:pointer; font-weight:500;
+}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn[disabled]{opacity:.45; cursor:not-allowed; filter:none}
+.btn.small{padding:4px 9px; font-size:12.5px}
+input[type=text],input[type=search],input[type=number],select{
+  border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:7px 10px; min-width:0; width:100%;
+}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
+.drop{
+  border:1.5px dashed var(--line); border-radius:8px; padding:14px; text-align:center; background:var(--bg);
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+}
+.drop.over{border-color:var(--accent); background:var(--accent-soft)}
+.file-input{position:absolute; width:1px; height:1px; opacity:0; pointer-events:none}
+.source{display:flex; flex-direction:column; gap:2px; font-size:13px}
+.source b{font-weight:600; overflow-wrap:anywhere}
+.tag{display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:99px; background:var(--warn-soft); color:var(--warn)}
+.err{background:var(--down-soft); color:var(--down); border-radius:6px; padding:8px 10px; font-size:13px}
+.seg{display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); border-radius:6px; overflow:hidden}
+.seg input{position:absolute; opacity:0; pointer-events:none}
+.seg label{padding:8px 10px; text-align:center; cursor:pointer; font-weight:500; background:var(--surface)}
+.seg label + input + label,.seg input + label + input + label{border-left:1px solid var(--line)}
+.seg input:checked + label.up{background:var(--up-soft); color:var(--up)}
+.seg input:checked + label.down{background:var(--down-soft); color:var(--down)}
+.seg input:focus-visible + label{outline:2px solid var(--accent); outline-offset:-2px}
+.pct{position:relative}
+.pct input{padding-right:30px; font-family:var(--font-mono); font-size:16px}
+.pct span{position:absolute; right:11px; top:50%; transform:translateY(-50%); color:var(--muted)}
+.chips{display:flex; gap:6px; flex-wrap:wrap}
+.chip{border:1px solid var(--line); background:var(--surface); border-radius:99px; padding:2px 10px; cursor:pointer; font-size:12.5px; font-family:var(--font-mono)}
+.chip:hover{background:var(--soft)}
+.chip[aria-pressed=true]{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+.example{font-family:var(--font-mono); font-size:12.5px; color:var(--muted)}
+.example b{color:var(--ink); font-weight:500}
+.check{display:flex; gap:8px; align-items:flex-start; cursor:pointer}
+.check input{margin-top:3px}
+.check small{display:block; color:var(--muted); font-size:12px}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.two label{display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--muted)}
+.two input{font-family:var(--font-mono)}
+.phead{padding:14px 16px; display:flex; gap:12px; align-items:baseline; justify-content:space-between; flex-wrap:wrap; border-bottom:1px solid var(--line)}
+.phead h2{font-size:15px; font-weight:600}
+.phead .count{color:var(--muted); font-size:13px; font-family:var(--font-mono)}
+.toolbar{padding:12px 16px; display:grid; grid-template-columns:minmax(160px,1fr) 130px 110px auto; gap:8px; align-items:center; border-bottom:1px solid var(--line)}
+.toolbar .btns{display:flex; gap:6px; flex-wrap:wrap}
+.scroll{overflow:auto; max-width:100%}
+.scroll.tall{max-height:340px}
+table{border-collapse:collapse; width:100%; min-width:560px}
+th,td{padding:7px 12px; text-align:left; border-bottom:1px solid var(--line); vertical-align:middle}
+th{position:sticky; top:0; background:var(--surface); font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; z-index:1; box-shadow:0 1px 0 var(--line)}
+td.num,th.num{text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+td.name{overflow-wrap:anywhere; min-width:200px}
+tr.off td{color:var(--muted)}
+tr.off .cname{text-decoration:line-through; text-decoration-color:var(--muted)}
+tbody tr:hover{background:var(--soft)}
+tr[data-i]{cursor:pointer}
+.expand{display:flex; gap:8px; align-items:flex-start; background:none; border:0; padding:0; text-align:left; cursor:pointer; font-weight:500; min-width:0}
+.chev{display:inline-block; width:12px; flex:none; color:var(--muted); transition:transform .15s}
+[aria-expanded=true] > .chev{transform:rotate(90deg)}
+@media (prefers-reduced-motion: reduce){ .chev{transition:none} }
+tr.detail:hover{background:var(--bg)}
+tr.detail > td{padding:0; background:var(--bg)}
+.dwrap{padding:8px 12px 12px 44px; display:flex; flex-direction:column; gap:6px}
+.ag{background:var(--surface); border:1px solid var(--line); border-radius:6px; min-width:0}
+.agbtn{width:100%; display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 12px; border:0; background:none; cursor:pointer; text-align:left}
+.agname{font-weight:500; overflow-wrap:anywhere}
+.agmeta{color:var(--muted); font-size:12.5px; font-family:var(--font-mono); margin-left:auto}
+.ag .scroll{border-top:1px solid var(--line); max-height:280px}
+.ag table,.pl table{min-width:480px}
+.sub{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:6px 2px 0}
+.pl{background:var(--surface); border:1px solid var(--line); border-radius:6px}
+.muted{color:var(--muted)}
+.pill{display:inline-block; font-size:11.5px; padding:1px 8px; border-radius:99px; background:var(--soft); color:var(--muted); font-weight:500}
+.pill.enabled{background:var(--up-soft); color:var(--up)}
+.pill.paused{background:var(--warn-soft); color:var(--warn)}
+.stats{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--line); border-bottom:1px solid var(--line)}
+.stat{background:var(--surface); padding:12px 16px; display:flex; flex-direction:column; gap:2px; min-width:0}
+.stat .k{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600}
+.stat .v{font-family:var(--font-mono); font-size:20px; font-weight:500; font-variant-numeric:tabular-nums; overflow-wrap:anywhere}
+.stat .v small{font-size:12.5px; color:var(--muted)}
+.export{padding:12px 16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--line)}
+.status{font-size:13px; color:var(--muted); flex:1 1 220px; min-width:0}
+.status.ok{color:var(--up)} .status.warn{color:var(--warn)}
+.d-up{color:var(--up)} .d-down{color:var(--down)}
+.empty{padding:28px 16px; text-align:center; color:var(--muted)}
+.foot{padding:10px 16px; color:var(--muted); font-size:12.5px}
+.stack{display:flex; flex-direction:column; gap:10px}
+.seg input:checked + label.neutral{background:var(--accent-soft); color:var(--accent)}
+.pill.up{background:var(--up-soft); color:var(--up)}
+.pill.down{background:var(--down-soft); color:var(--down)}
+.act .pill{margin-left:6px; white-space:nowrap}
+#camptable td.num{white-space:nowrap}
+.rule{border:1px solid var(--line); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px; background:var(--bg)}
+.rule select,.rule input{padding:6px 7px}
+.rline{display:grid; grid-template-columns:38px minmax(0,1fr) 54px 72px; gap:6px; align-items:center}
+.rthen{display:grid; grid-template-columns:38px minmax(0,1fr) 84px 32px; gap:6px; align-items:center}
+.rline .w,.rthen .w{font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+.rule .pct input{padding-right:24px; font-size:14px}
+.rule .pct span{right:8px}
+.rcount{font-size:12px; color:var(--muted)}
+.xbtn{padding:4px 0; width:32px; text-align:center}
+.toolbar2{padding:10px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; border-bottom:1px solid var(--line)}
+.toolbar2 select,.toolbar2 input{width:auto}
+.toolbar2 #pf-m{min-width:140px}
+.toolbar2 #pf-op{width:64px}
+.toolbar2 #pf-v{width:110px; font-family:var(--font-mono)}
+.toolbar2 .hint{flex:1 1 140px}
+#camptable{min-width:880px}
+@media (max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .toolbar{grid-template-columns:1fr 1fr}
+  .toolbar input[type=search]{grid-column:1 / -1}
+  .toolbar .btns{grid-column:1 / -1}
+  .stats{grid-template-columns:minmax(0,1fr)}
+  .dwrap{padding-left:12px}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Bulk Bid Shifter</h1>
+    <p>Raise or lower Amazon Ads bids by a percentage, or by performance rules such as ACOS and orders, across the campaigns you pick. Check every change, then download a file that is ready for bulk upload.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="rail panel" aria-label="Bid settings">
+      <div class="group" id="dropzone">
+        <h2 class="label">Bulk file</h2>
+        <div class="drop" id="drop">
+          <input class="file-input" id="file" type="file" accept=".xlsx,.xls,.csv" aria-label="Choose bulk operations file">
+          <button class="btn" type="button" id="pick">Choose file</button>
+          <span class="hint">or drop it here (.xlsx, .xls, .csv)</span>
+        </div>
+        <div class="source" id="source"></div>
+        <div class="err" id="err" role="alert" hidden></div>
+        <p class="hint">In Campaign Manager open Bulk operations, download a spreadsheet for the dates you want, then add it here. The file stays in your browser and is not uploaded anywhere.</p>
+      </div>
+
+      <div class="group">
+        <h2 class="label">Change bids</h2>
+        <div class="seg" role="radiogroup" aria-label="How to choose the change">
+          <input type="radio" name="mode" id="mode-same" value="same" checked>
+          <label class="neutral" for="mode-same">Same for all</label>
+          <input type="radio" name="mode" id="mode-rules" value="rules">
+          <label class="neutral" for="mode-rules">By performance</label>
+        </div>
+        <div class="stack" id="uniform">
+        <div class="seg" role="radiogroup" aria-label="Direction">
+          <input type="radio" name="dir" id="dir-up" value="up" checked>
+          <label class="up" for="dir-up">Increase</label>
+          <input type="radio" name="dir" id="dir-down" value="down">
+          <label class="down" for="dir-down">Decrease</label>
+        </div>
+        <div class="pct"><input id="pct" type="number" inputmode="decimal" min="0" max="1000" step="0.1" value="10" aria-label="Percent change"><span>%</span></div>
+        <div class="chips" id="chips"></div>
+        <div class="example" id="example"></div>
+        </div>
+        <div class="stack" id="rules" hidden>
+          <p class="hint">Each campaign gets the first rule it matches, top to bottom. Campaigns that match no rule stay unchanged. The two rules below are examples, so edit them to suit your targets.</p>
+          <div class="stack" id="rulelist"></div>
+          <button class="btn small" type="button" id="addrule">Add rule</button>
+          <div class="hint" id="rulenone"></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2 class="label">What to change</h2>
+        <label class="check"><input type="checkbox" id="cat-target" checked><span>Keyword and product targeting bids<small id="n-target"></small></span></label>
+        <label class="check"><input type="checkbox" id="cat-group"><span>Ad group default bids<small id="n-group"></small></span></label>
+        <label class="check"><input type="checkbox" id="cat-place"><span>Placement modifiers (top of search, product pages)<small id="n-place"></small></span></label>
+      </div>
+
+      <div class="group">
+        <h2 class="label">Campaign status</h2>
+        <label class="check"><input type="checkbox" id="st-enabled" checked><span>Enabled</span></label>
+        <label class="check"><input type="checkbox" id="st-paused" checked><span>Paused<small>Archived items are always skipped. Amazon does not accept updates for them.</small></span></label>
+      </div>
+
+      <div class="group">
+        <h2 class="label">Limits</h2>
+        <div class="two">
+          <label>Never go below<input id="minbid" type="number" inputmode="decimal" min="0" step="0.01" value="0.02"></label>
+          <label>Never go above<input id="maxbid" type="number" inputmode="decimal" min="0" step="0.01" placeholder="no limit"></label>
+        </div>
+        <p class="hint">The floor applies when decreasing and the cap when increasing. Bids already outside a limit stay as they are.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel" aria-label="Campaigns">
+        <div class="phead">
+          <h2>Campaigns</h2>
+          <span class="count" id="campcount"></span>
+        </div>
+        <div class="toolbar">
+          <input type="search" id="q" placeholder="Search campaign name" aria-label="Search campaigns">
+          <select id="f-state" aria-label="Filter by status">
+            <option value="">All statuses</option><option value="enabled">Enabled</option><option value="paused">Paused</option>
+          </select>
+          <select id="f-type" aria-label="Filter by ad type">
+            <option value="">All types</option><option value="SP">Products</option><option value="SB">Brands</option><option value="SD">Display</option>
+          </select>
+          <div class="btns">
+            <button class="btn small" type="button" id="select-all">Select all</button>
+            <button class="btn small" type="button" id="deselect-all">Deselect all</button>
+          </div>
+        </div>
+        <div class="toolbar2">
+          <span class="label">Performance</span>
+          <select id="pf-m" aria-label="Metric to filter by"></select>
+          <select id="pf-op" aria-label="Comparison"><option value="ge" title="at least">&ge;</option><option value="le" title="at most">&le;</option><option value="eq" title="exactly">=</option></select>
+          <input type="number" id="pf-v" inputmode="decimal" step="any" placeholder="Value" aria-label="Value to compare with">
+          <button class="btn small" type="button" id="pf-only">Select only these</button>
+          <span class="hint" id="pf-note"></span>
+        </div>
+        <div class="scroll tall">
+          <table id="camptable">
+            <thead><tr><th style="width:44px"><input type="checkbox" id="check-all" aria-label="Include or exclude all shown campaigns"></th><th>Campaign</th><th>Type</th><th>Status</th><th class="num">Impr.</th><th class="num">Clicks</th><th class="num">Orders</th><th class="num">ACOS</th><th class="num">Bids</th><th class="num">Avg bid</th></tr></thead>
+            <tbody id="camps"></tbody>
+          </table>
+        </div>
+        <div class="foot">The box in the table header toggles every campaign shown by the current search and filters. Click a campaign to see its ad groups, then an ad group to see its keywords and product targets. Checked campaigns are changed. Unchecked campaigns are left exactly as they are.</div>
+      </section>
+
+      <section class="panel" aria-label="Preview">
+        <div class="phead">
+          <h2>Preview</h2>
+          <span class="count" id="prevnote"></span>
+        </div>
+        <div class="stats">
+          <div class="stat"><span class="k">Bids to change</span><span class="v" id="s-bids">0</span></div>
+          <div class="stat"><span class="k">Campaigns affected</span><span class="v" id="s-camps">0</span></div>
+          <div class="stat"><span class="k">Average target bid</span><span class="v" id="s-avg">-</span></div>
+        </div>
+        <div class="export">
+          <button class="btn primary" type="button" id="dl-xlsx" disabled>Download upload file (.xlsx)</button>
+          <button class="btn" type="button" id="dl-csv" disabled>Change log (.csv)</button>
+          <span class="status" id="status" role="status"></span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Campaign</th><th>Target</th><th>Kind</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead>
+            <tbody id="prev"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+  var XL = window.XLSX;
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var S = { fileName:'', isSample:false, sheets:[], campList:[], camps:new Map(), selected:new Set(), records:[], shown:[], changes:[] };
+  var cfg = { mode:'same', perf:{m:'', op:'ge', v:null},
+    rules:[
+      {c:[{m:'acos', op:'ge', v:40}, {m:'', op:'ge', v:null}], dir:'down', pct:15},
+      {c:[{m:'orders', op:'ge', v:3}, {m:'acos', op:'le', v:25}], dir:'up', pct:10}
+    ],
+    dir:'up', pct:10, cats:{target:true, group:false, place:false}, enabled:true, paused:true, min:0.02, max:null };
+  var MAX_ROWS = 200;
+  var DL = null;
+
+  function isNum(v){ return v !== '' && v !== null && v !== undefined && isFinite(Number(v)); }
+  function fmt(n){ return Number(n).toFixed(2); }
+  function fmtInt(n){ return Number(n).toLocaleString('en-US'); }
+  function firstText(r, cols){ for (var i=0;i<cols.length;i++){ if (cols[i] < 0) continue; var v = r[cols[i]]; if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim(); } return ''; }
+
+  /* ---------- parsing ---------- */
+  /* Amazon's files often declare a one-row sheet size (A1:BB1) while the data runs for thousands of rows.
+     Rebuild the real range from the cells that exist. */
+  function fixRange(ws){
+    var maxR = 0, maxC = 0, any = false;
+    for (var k in ws){
+      if (k.charAt(0) === '!' || !Object.prototype.hasOwnProperty.call(ws, k)) continue;
+      var a = XL.utils.decode_cell(k);
+      if (a.r > maxR) maxR = a.r;
+      if (a.c > maxC) maxC = a.c;
+      any = true;
+    }
+    if (any) ws['!ref'] = XL.utils.encode_range({s:{r:0,c:0}, e:{r:maxR, c:maxC}});
+  }
+  function parseWorkbook(wb){
+    var sheets = [], camps = new Map(), records = [];
+    var meta = (wb.Workbook && wb.Workbook.Sheets) || [];
+    wb.SheetNames.forEach(function(name, n){
+      if (meta[n] && meta[n].Hidden) return;
+      var ws = wb.Sheets[name];
+      fixRange(ws);
+      var aoa = XL.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false});
+      var h = -1, i;
+      for (i=0; i<Math.min(aoa.length, 8); i++){
+        var lw = aoa[i].map(function(c){ return String(c).trim().toLowerCase(); });
+        if (lw.indexOf('entity') >= 0 && lw.indexOf('operation') >= 0){ h = i; break; }
+      }
+      if (h < 0) return;
+      var low = aoa[h].map(function(c){ return String(c).trim().toLowerCase(); });
+      var ix = function(n){ return low.indexOf(n); };
+      var c = {
+        entity:ix('entity'), operation:ix('operation'), campaignId:ix('campaign id'),
+        names:[ix('campaign name (informational only)'), ix('campaign name')],
+        agNames:[ix('ad group name (informational only)'), ix('ad group name')],
+        agId:ix('ad group id'), impr:ix('impressions'), clicks:ix('clicks'), orders:ix('orders'), spend:ix('spend'), sales:ix('sales'), bid:ix('bid'), agBid:ix('ad group default bid'), state:ix('state'), campState:ix('campaign state (informational only)'),
+        pct:ix('percentage'), kw:ix('keyword text'), match:ix('match type'), expr:ix('product targeting expression'),
+        placement:ix('placement'), product:ix('product')
+      };
+      var si = sheets.length;
+      sheets.push({name:name, aoa:aoa, h:h, c:c});
+      var tag = 'SP';
+      var nameLow = name.toLowerCase();
+      if (nameLow.indexOf('brand') >= 0) tag = 'SB'; else if (nameLow.indexOf('display') >= 0) tag = 'SD';
+      for (i=h+1; i<aoa.length; i++){
+        var r = aoa[i];
+        var ent = String(r[c.entity] === undefined ? '' : r[c.entity]).trim();
+        if (!ent) continue;
+        if (c.product >= 0){
+          var pv = String(r[c.product]).toLowerCase();
+          if (pv.indexOf('brand') >= 0) tag = 'SB'; else if (pv.indexOf('display') >= 0) tag = 'SD'; else if (pv.indexOf('product') >= 0) tag = 'SP';
+        }
+        var cid = c.campaignId >= 0 ? String(r[c.campaignId] === undefined ? '' : r[c.campaignId]).trim() : '';
+        var cname = firstText(r, c.names);
+        if (!cid && !cname) continue;
+        var key = tag + '|' + (cid || cname);
+        var camp = camps.get(key);
+        if (!camp){ camp = {key:key, tag:tag, id:cid, name:cname || cid, state:'', total:0, tN:0, tSum:0, m:null}; camps.set(key, camp); }
+        if (cname && (!camp.name || camp.name === camp.id)) camp.name = cname;
+        var rowState = c.state >= 0 ? String(r[c.state]).trim().toLowerCase() : '';
+        if (ent.toLowerCase() === 'campaign' && rowState) camp.state = rowState;
+        else if (!camp.state && c.campState >= 0 && String(r[c.campState]).trim()) camp.state = String(r[c.campState]).trim().toLowerCase();
+        if (ent.toLowerCase() === 'campaign'){
+          var mm = {};
+          ['impr','clicks','orders','spend','sales'].forEach(function(k){ var cc = c[k]; mm[k] = (cc >= 0 && isNum(r[cc])) ? Number(r[cc]) : null; });
+          camp.m = mm;
+        }
+        var el = ent.toLowerCase(), cat = null, col = -1;
+        if (el === 'bidding adjustment'){
+          if (c.pct >= 0 && isNum(r[c.pct])){ cat = 'place'; col = c.pct; }
+        } else if (el === 'ad group'){
+          if (c.agBid >= 0 && isNum(r[c.agBid])){ cat = 'group'; col = c.agBid; }
+          else if (c.bid >= 0 && isNum(r[c.bid])){ cat = 'group'; col = c.bid; }
+        } else if (el !== 'campaign' && el !== 'ad' && el !== 'product ad' && el !== 'portfolio' && el.indexOf('negative') < 0){
+          if (c.bid >= 0 && isNum(r[c.bid])){ cat = 'target'; col = c.bid; }
+        }
+        if (!cat) continue;
+        var label = '', sub = '';
+        if (cat === 'target'){
+          label = (c.kw >= 0 && String(r[c.kw]).trim()) || (c.expr >= 0 && String(r[c.expr]).trim()) || ent;
+          sub = c.match >= 0 ? String(r[c.match]).trim() : '';
+        } else if (cat === 'group'){
+          label = firstText(r, c.agNames) || 'Ad group';
+        } else {
+          label = c.placement >= 0 ? String(r[c.placement]).trim() : 'Placement';
+        }
+        var old = Number(r[col]);
+        camp.total++;
+        if (cat === 'target'){ camp.tN++; camp.tSum += old; }
+        var agn = firstText(r, c.agNames);
+        var agid = c.agId >= 0 ? String(r[c.agId] === undefined ? '' : r[c.agId]).trim() : '';
+        records.push({si:si, ri:i, cat:cat, key:key, ent:ent, label:label, sub:sub, state:rowState, old:old, col:col, ag:(cat === 'place' ? '' : (agid || agn)), agName:agn});
+      }
+    });
+    var list = Array.from(camps.values()).filter(function(x){ return x.total > 0; });
+    list.sort(function(a,b){ return a.tag === b.tag ? a.name.localeCompare(b.name) : a.tag.localeCompare(b.tag); });
+    return {sheets:sheets, camps:camps, list:list, records:records};
+  }
+
+  function buildTree(records){
+    var t = new Map();
+    records.forEach(function(r){
+      var n = t.get(r.key);
+      if (!n){ n = {groups:new Map(), places:[]}; t.set(r.key, n); }
+      if (r.cat === 'place'){ n.places.push(r); return; }
+      var g = n.groups.get(r.ag);
+      if (!g){ g = {name:r.agName || '(unnamed ad group)', state:'', gr:null, targets:[]}; n.groups.set(r.ag, g); }
+      if (r.agName && g.name === '(unnamed ad group)') g.name = r.agName;
+      if (r.cat === 'group'){ g.gr = r; g.state = r.state; } else g.targets.push(r);
+    });
+    return t;
+  }
+
+  function ingest(wb, fileName, isSample){
+    var p = parseWorkbook(wb);
+    if (!p.records.length){
+      showErr('No bids found. Use a Bulk operations spreadsheet from Campaign Manager. It needs the Entity and Operation columns.');
+      return false;
+    }
+    showErr('');
+    S.fileName = fileName; S.isSample = isSample; S.sheets = p.sheets; S.camps = p.camps; S.campList = p.list; S.records = p.records;
+    S.selected = new Set(p.list.map(function(x){ return x.key; }));
+    S.tree = buildTree(p.records); S.open = new Set(); S.openAg = new Set();
+    $('q').value = ''; $('f-state').value = ''; $('f-type').value = ''; $('pf-m').value = ''; cfg.perf.m = '';
+    renderSource(); renderCamps(); compute();
+    setStatus('');
+    return true;
+  }
+
+  /* ---------- example data ---------- */
+  function sampleWorkbook(){
+    var seed = 11;
+    var rnd = function(){ seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    var head = ['Product','Entity','Operation','Campaign ID','Ad Group ID','Keyword ID','Product Targeting ID','Campaign Name (Informational only)','Ad Group Name (Informational only)','State','Ad Group Default Bid','Bid','Keyword Text','Match Type','Placement','Percentage','Product Targeting Expression','Impressions','Clicks','Orders','Spend','Sales'];
+    var kwSets = {
+      brand:['zenfit','zenfit yoga mat','zenfit mat','zenfit pilates'],
+      core:['yoga mat','non slip yoga mat','thick yoga mat','exercise mat','pilates mat','gym floor mat','travel yoga mat','cork yoga mat'],
+      comp:['b07ymt4k2p','b08c1w5n6q','b09d3f7h8j','b0a1x2y3z4']
+    };
+    var defs = [
+      ['SP | Brand Defense | Exact','enabled','brand','exact',0.45],
+      ['SP | Core Products | Exact','enabled','core','exact',0.85],
+      ['SP | Core Products | Broad','enabled','core','broad',0.60],
+      ['SP | Competitors | Product Targeting','enabled','comp','pt',0.70],
+      ['SP | Auto | Close and Loose Match','enabled','core','auto',0.40],
+      ['SP | Seasonal Q4 | Phrase','paused','core','phrase',0.75],
+      ['SP | Clearance | Auto','enabled','core','auto',0.30]
+    ];
+    var SPM = [
+      {Impressions:48210,Clicks:610,Orders:58,Spend:212.4,Sales:1240.5},
+      {Impressions:96300,Clicks:1480,Orders:96,Spend:742.8,Sales:2105},
+      {Impressions:61250,Clicks:802,Orders:21,Spend:455.1,Sales:610.4},
+      {Impressions:20410,Clicks:190,Orders:9,Spend:118.6,Sales:402.3},
+      {Impressions:134800,Clicks:1210,Orders:44,Spend:389.9,Sales:1390.2},
+      {Impressions:5020,Clicks:41,Orders:0,Spend:36.7,Sales:0},
+      {Impressions:72800,Clicks:350,Orders:3,Spend:98.2,Sales:129.9}
+    ];
+    var SBM = [
+      {Impressions:30500,Clicks:402,Orders:31,Spend:160.2,Sales:820},
+      {Impressions:88000,Clicks:760,Orders:12,Spend:412,Sales:550.7}
+    ];
+    var rows = [head], id = 100;
+    function mk(o){ rows.push(head.map(function(h){ return o[h] === undefined ? '' : o[h]; })); }
+    defs.forEach(function(d, di){
+      var cid = String(1000 + di), gid = String(2000 + di);
+      mk(Object.assign({'Product':'Sponsored Products','Entity':'Campaign','Operation':'Update','Campaign ID':cid,'Campaign Name (Informational only)':d[0],'State':d[1]}, SPM[di]));
+      mk({'Product':'Sponsored Products','Entity':'Ad Group','Operation':'Update','Campaign ID':cid,'Ad Group ID':gid,'Campaign Name (Informational only)':d[0],'Ad Group Name (Informational only)':'Ad group 1','State':d[1],'Ad Group Default Bid':d[4]});
+      kwSets[d[2]].forEach(function(k){
+        var bid = Math.round((d[4] * (0.7 + rnd() * 0.7)) * 100) / 100;
+        var base = {'Product':'Sponsored Products','Operation':'Update','Campaign ID':cid,'Ad Group ID':gid,'Campaign Name (Informational only)':d[0],'Ad Group Name (Informational only)':'Ad group 1','State':d[1],'Bid':bid};
+        if (d[3] === 'pt'){ base['Entity'] = 'Product Targeting'; base['Product Targeting ID'] = String(id++); base['Product Targeting Expression'] = 'asin="' + k.toUpperCase() + '"'; }
+        else if (d[3] === 'auto'){ base['Entity'] = 'Product Targeting'; base['Product Targeting ID'] = String(id++); base['Product Targeting Expression'] = ['close-match','loose-match','substitutes','complements'][Math.floor(rnd()*4)]; }
+        else { base['Entity'] = 'Keyword'; base['Keyword ID'] = String(id++); base['Keyword Text'] = k; base['Match Type'] = d[3]; }
+        mk(base);
+      });
+      [['Placement Top',[25,40,60,30][di % 4]],['Placement Product Page',[10,0,15,20][di % 4]]].forEach(function(pl){
+        mk({'Product':'Sponsored Products','Entity':'Bidding Adjustment','Operation':'Update','Campaign ID':cid,'Campaign Name (Informational only)':d[0],'Placement':pl[0],'Percentage':pl[1]});
+      });
+    });
+    var sb = [head];
+    [['SB | Video | Brand Terms','enabled',['zenfit','zenfit yoga'],0.90],['SB | Store Spotlight | Core','enabled',['yoga mat','pilates mat','gym mat'],1.10]].forEach(function(d, di){
+      var cid = String(3000 + di);
+      sb.push(head.map(function(h){ return (Object.assign({'Product':'Sponsored Brands','Entity':'Campaign','Operation':'Update','Campaign ID':cid,'Campaign Name (Informational only)':d[0],'State':d[1]}, SBM[di]))[h] || ''; }));
+      d[2].forEach(function(k){
+        var o = {'Product':'Sponsored Brands','Entity':'Keyword','Operation':'Update','Campaign ID':cid,'Ad Group ID':String(4000 + di),'Keyword ID':String(id++),'Campaign Name (Informational only)':d[0],'State':d[1],'Bid':Math.round(d[3] * (0.8 + rnd() * 0.5) * 100) / 100,'Keyword Text':k,'Match Type':'phrase'};
+        sb.push(head.map(function(h){ return o[h] === undefined ? '' : o[h]; }));
+      });
+    });
+    var wb = XL.utils.book_new();
+    XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), 'Sponsored Products Campaigns');
+    XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(sb), 'Sponsored Brands Campaigns');
+    return wb;
+  }
+
+  /* ---------- calculation ---------- */
+  function calcNew(r, dir, pct){
+    dir = dir || cfg.dir; if (pct === undefined) pct = cfg.pct;
+    var p = (pct / 100) * (dir === 'up' ? 1 : -1), nv;
+    if (r.cat === 'place'){
+      nv = Math.round(r.old * (1 + p));
+      return Math.min(900, Math.max(0, nv));
+    }
+    nv = Math.round(r.old * (1 + p) * 100) / 100;
+    if (dir === 'down' && cfg.min !== null) nv = Math.min(r.old, Math.max(nv, cfg.min));
+    if (dir === 'up' && cfg.max !== null) nv = Math.max(r.old, Math.min(nv, cfg.max));
+    return Math.round(nv * 100) / 100;
+  }
+
+  var METRICS = [
+    {k:'impr', label:'Impressions'}, {k:'clicks', label:'Clicks'}, {k:'orders', label:'Orders'},
+    {k:'spend', label:'Spend'}, {k:'sales', label:'Sales'}, {k:'acos', label:'ACOS %'}
+  ];
+  /* Campaign-level performance. ACOS is spend / sales in percent; spend with no sales counts as infinite ACOS. */
+  function mval(c, k){
+    var m = c.m; if (!m) return null;
+    if (k === 'acos'){
+      if (m.sales === null || m.spend === null) return null;
+      if (m.sales > 0) return m.spend / m.sales * 100;
+      return m.spend > 0 ? Infinity : null;
+    }
+    var v = m[k]; return (v === null || v === undefined) ? null : v;
+  }
+  function mshow(c, k){
+    var v = mval(c, k); if (v === null) return '-';
+    if (k === 'acos') return v === Infinity ? 'no sales' : v.toFixed(1) + '%';
+    if (k === 'spend' || k === 'sales') return v.toFixed(2);
+    return fmtInt(v);
+  }
+  function cmp(v, op, x){
+    if (v === null) return false;
+    if (op === 'ge') return v >= x;
+    if (op === 'le') return v <= x;
+    return v === x;
+  }
+  function validCond(cd){ return !!cd && !!cd.m && typeof cd.v === 'number' && isFinite(cd.v); }
+  function ruleIdx(c){
+    for (var i = 0; i < cfg.rules.length; i++){
+      var rl = cfg.rules[i];
+      if (!validCond(rl.c[0]) || !(rl.pct > 0)) continue;
+      if (!cmp(mval(c, rl.c[0].m), rl.c[0].op, rl.c[0].v)) continue;
+      if (validCond(rl.c[1]) && !cmp(mval(c, rl.c[1].m), rl.c[1].op, rl.c[1].v)) continue;
+      return i;
+    }
+    return -1;
+  }
+  function stateOk(c){ var st = c.state; return !(st === 'archived' || (st === 'enabled' && !cfg.enabled) || (st === 'paused' && !cfg.paused)); }
+  function actPill(c){
+    if (cfg.mode !== 'rules' || !S.selected.has(c.key) || !stateOk(c)) return '';
+    var i = ruleIdx(c); if (i < 0) return '';
+    var rl = cfg.rules[i];
+    return '<span class="pill ' + rl.dir + '">' + (rl.dir === 'up' ? '+' : '-') + rl.pct + '%</span>';
+  }
+  function refreshActs(){
+    Array.prototype.forEach.call(document.querySelectorAll('#camps tr[data-i]'), function(tr){
+      var a = tr.querySelector('.act'); if (a) a.innerHTML = actPill(S.campList[Number(tr.dataset.i)]);
+    });
+  }
+  function metricOptions(sel, none){
+    return (none ? '<option value="">' + none + '</option>' : '') + METRICS.map(function(m){
+      return '<option value="' + m.k + '"' + (sel === m.k ? ' selected' : '') + '>' + m.label + '</option>';
+    }).join('');
+  }
+  function opOptions(sel){
+    return [['ge','&ge;'],['le','&le;'],['eq','=']].map(function(o){
+      return '<option value="' + o[0] + '"' + (sel === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+    }).join('');
+  }
+  function renderRules(){
+    $('rulelist').innerHTML = cfg.rules.map(function(rl, i){
+      var c0 = rl.c[0], c1 = rl.c[1], n = i + 1;
+      var v0 = c0.v === null ? '' : c0.v, v1 = c1.v === null ? '' : c1.v;
+      return '<div class="rule" data-r="' + i + '">' +
+        '<div class="rline"><span class="w">If</span><select data-f="m0" aria-label="Rule ' + n + ' metric">' + metricOptions(c0.m) + '</select><select data-f="op0" aria-label="Rule ' + n + ' comparison">' + opOptions(c0.op) + '</select><input data-f="v0" type="number" inputmode="decimal" step="any" value="' + v0 + '" aria-label="Rule ' + n + ' value"></div>' +
+        '<div class="rline"><span class="w">And</span><select data-f="m1" aria-label="Rule ' + n + ' second metric">' + metricOptions(c1.m, 'None') + '</select><select data-f="op1" aria-label="Rule ' + n + ' second comparison">' + opOptions(c1.op) + '</select><input data-f="v1" type="number" inputmode="decimal" step="any" value="' + v1 + '" aria-label="Rule ' + n + ' second value"></div>' +
+        '<div class="rthen"><span class="w">Then</span><select data-f="dir" aria-label="Rule ' + n + ' direction"><option value="up"' + (rl.dir === 'up' ? ' selected' : '') + '>Increase</option><option value="down"' + (rl.dir === 'down' ? ' selected' : '') + '>Decrease</option></select>' +
+        '<div class="pct"><input data-f="pct" type="number" inputmode="decimal" min="0" max="1000" step="0.1" value="' + rl.pct + '" aria-label="Rule ' + n + ' percent"><span>%</span></div>' +
+        '<button type="button" class="btn small xbtn" data-del aria-label="Remove rule ' + n + '" title="Remove rule">&times;</button></div>' +
+        '<div class="rcount" data-count></div></div>';
+    }).join('') || '<div class="hint">No rules yet. Add one below.</div>';
+  }
+  function readRules(){
+    var out = [];
+    Array.prototype.forEach.call($('rulelist').querySelectorAll('.rule'), function(el){
+      var g = function(f){ return el.querySelector('[data-f="' + f + '"]'); };
+      var num = function(f){ var x = parseFloat(g(f).value); return isFinite(x) ? x : null; };
+      out.push({c:[{m:g('m0').value, op:g('op0').value, v:num('v0')}, {m:g('m1').value, op:g('op1').value, v:num('v1')}], dir:g('dir').value, pct:num('pct') || 0});
+    });
+    cfg.rules = out;
+  }
+  function updateRuleCounts(){
+    var counts = cfg.rules.map(function(){ return 0; }), none = 0, incl = 0;
+    S.campList.forEach(function(c){
+      if (!S.selected.has(c.key) || !stateOk(c)) return;
+      incl++;
+      var i = ruleIdx(c);
+      if (i < 0) none++; else counts[i]++;
+    });
+    Array.prototype.forEach.call($('rulelist').querySelectorAll('.rule'), function(el, i){
+      var rl = cfg.rules[i], n = el.querySelector('[data-count]');
+      if (!rl || !n) return;
+      n.textContent = (validCond(rl.c[0]) && rl.pct > 0) ? fmtInt(counts[i]) + ' campaign' + (counts[i] === 1 ? '' : 's') + ' use this rule' : 'Enter a value and a percentage to use this rule.';
+    });
+    $('rulenone').textContent = fmtInt(none) + ' of ' + fmtInt(incl) + ' included campaigns match no rule and stay unchanged.';
+  }
+
+  /* Returns {nv} when this bid is in scope under the current settings, otherwise null. */
+  function evalRecord(r){
+    if (!cfg.cats[r.cat] || !S.selected.has(r.key)) return null;
+    var camp = S.camps.get(r.key);
+    var st = (r.state || (camp && camp.state) || '').toLowerCase();
+    if (st === 'archived') return null;
+    if (st === 'enabled' && !cfg.enabled) return null;
+    if (st === 'paused' && !cfg.paused) return null;
+    if (cfg.mode === 'rules'){
+      var ri = ruleIdx(camp);
+      if (ri < 0) return null;
+      return {nv: calcNew(r, cfg.rules[ri].dir, cfg.rules[ri].pct)};
+    }
+    return {nv: calcNew(r)};
+  }
+
+  function compute(){
+    var changes = [], eligible = 0, counts = {target:0, group:0, place:0};
+    S.records.forEach(function(r){
+      counts[r.cat]++;
+      var ev = evalRecord(r);
+      if (!ev) return;
+      eligible++;
+      if (ev.nv !== r.old) changes.push({r:r, nv:ev.nv});
+    });
+    S.changes = changes;
+    if (S.open && S.open.size) renderCamps(); else refreshActs();
+    updateRuleCounts();
+    $('n-target').textContent = fmtInt(counts.target) + ' in this file';
+    $('n-group').textContent = fmtInt(counts.group) + ' in this file';
+    $('n-place').textContent = fmtInt(counts.place) + ' in this file';
+    renderPreview(eligible);
+    renderExample();
+  }
+
+  /* ---------- rendering ---------- */
+  function renderSource(){
+    var nb = S.records.length;
+    $('source').innerHTML = '<b>' + esc(S.fileName) + '</b>' +
+      (S.isSample ? '<span><span class="tag">Example data</span> Add your own file to replace it.</span>' : '') +
+      '<span class="hint">' + fmtInt(S.sheets.length) + ' sheet' + (S.sheets.length === 1 ? '' : 's') + ', ' + fmtInt(S.campList.length) + ' campaigns, ' + fmtInt(nb) + ' bids</span>';
+  }
+  function showErr(msg){ var e = $('err'); e.hidden = !msg; e.textContent = msg || ''; if (msg && e.scrollIntoView) e.scrollIntoView({block:'nearest'}); }
+  function setStatus(msg, kind){ var s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
+
+  function visibleCamps(){
+    var q = $('q').value.trim().toLowerCase(), fs = $('f-state').value, ft = $('f-type').value;
+    var out = [];
+    S.campList.forEach(function(c, i){
+      if (q && c.name.toLowerCase().indexOf(q) < 0) return;
+      if (fs && c.state !== fs) return;
+      if (ft && c.tag !== ft) return;
+      var pf = cfg.perf;
+      if (pf.m && typeof pf.v === 'number' && isFinite(pf.v) && !cmp(mval(c, pf.m), pf.op, pf.v)) return;
+      out.push(i);
+    });
+    return out;
+  }
+  function renderCamps(){
+    var vis = visibleCamps();
+    S.shown = vis;
+    var html = vis.map(function(i){
+      var c = S.campList[i], on = S.selected.has(c.key), open = S.open.has(c.key);
+      var avg = c.tN ? fmt(c.tSum / c.tN) : '-';
+      return '<tr data-i="' + i + '" class="' + (on ? '' : 'off') + '"><td><input type="checkbox" aria-label="Include ' + esc(c.name) + '"' + (on ? ' checked' : '') + '></td>' +
+        '<td class="name"><button type="button" class="expand" aria-expanded="' + open + '"><span class="chev" aria-hidden="true">&#9656;</span><span class="cname">' + esc(c.name) + '</span><span class="act">' + actPill(c) + '</span></button></td><td>' + c.tag + '</td>' +
+        '<td><span class="pill ' + esc(c.state) + '">' + esc(c.state || 'n/a') + '</span></td>' +
+        '<td class="num">' + mshow(c,'impr') + '</td><td class="num">' + mshow(c,'clicks') + '</td><td class="num">' + mshow(c,'orders') + '</td><td class="num">' + mshow(c,'acos') + '</td>' +
+        '<td class="num">' + fmtInt(c.total) + '</td><td class="num">' + avg + '</td></tr>' +
+        (open ? detailHtml(c) : '');
+    }).join('');
+    $('camps').innerHTML = html || '<tr><td colspan="10" class="empty">No campaigns match these filters.</td></tr>';
+    var pfv = cfg.perf, active = pfv.m && typeof pfv.v === 'number' && isFinite(pfv.v);
+    var hasM = S.campList.some(function(c){ return c.m; });
+    $('pf-note').textContent = !hasM ? 'This file has no impressions, clicks or sales columns.' : (active ? fmtInt(vis.length) + ' shown' : '');
+    $('pf-only').disabled = !vis.length;
+    renderCampCount();
+  }
+  /* New-bid cell for the drill-down: shows the new value only when this bid will actually change. */
+  function newCell(r){
+    var ev = evalRecord(r), pl = r.cat === 'place';
+    if (!ev || ev.nv === r.old) return '<td class="num muted">-</td><td class="num muted">-</td>';
+    var d = r.old ? (ev.nv - r.old) / r.old * 100 : null;
+    var cls = ev.nv > r.old ? 'd-up' : 'd-down';
+    return '<td class="num ' + cls + '">' + (pl ? ev.nv + '%' : fmt(ev.nv)) + '</td><td class="num ' + cls + '">' + (d === null ? '-' : (d >= 0 ? '+' : '') + d.toFixed(1) + '%') + '</td>';
+  }
+  function oldVal(r){ return r.cat === 'place' ? r.old + '%' : fmt(r.old); }
+
+  function detailHtml(c){
+    var n = S.tree.get(c.key);
+    var out = '<tr class="detail"><td colspan="10"><div class="dwrap">';
+    if (!n){ return out + '<div class="muted">No bids in this campaign.</div></div></td></tr>'; }
+    n.groups.forEach(function(g, gk){
+      var ak = c.key + '||' + gk, open = S.openAg.has(ak);
+      var meta = fmtInt(g.targets.length) + ' target' + (g.targets.length === 1 ? '' : 's');
+      if (g.gr){
+        var ev = evalRecord(g.gr);
+        meta += ' · default bid ' + fmt(g.gr.old) + (ev && ev.nv !== g.gr.old ? ' to ' + fmt(ev.nv) : '');
+      }
+      out += '<div class="ag"><button type="button" class="agbtn" data-ak="' + esc(ak) + '" aria-expanded="' + open + '"><span class="chev" aria-hidden="true">&#9656;</span><span class="agname">' + esc(g.name) + '</span>' +
+        (g.state ? '<span class="pill ' + esc(g.state) + '">' + esc(g.state) + '</span>' : '') + '<span class="agmeta">' + meta + '</span></button>';
+      if (open){
+        out += '<div class="scroll"><table><thead><tr><th>Target</th><th>Match</th><th>Kind</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>';
+        out += g.targets.map(function(r){
+          return '<tr><td class="name">' + esc(r.label) + '</td><td>' + (r.sub ? '<span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(r.ent) + '</td><td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>';
+        }).join('') || '<tr><td colspan="6" class="empty">No keywords or product targets in this ad group.</td></tr>';
+        out += '</tbody></table></div>';
+      }
+      out += '</div>';
+    });
+    if (n.places.length){
+      out += '<div class="sub">Placement modifiers</div><div class="pl scroll"><table><thead><tr><th>Placement</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>' +
+        n.places.map(function(r){ return '<tr><td>' + esc(r.label) + '</td><td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+    return out + '</div></td></tr>';
+  }
+
+  function renderCampCount(){
+    $('campcount').textContent = S.selected.size + ' of ' + S.campList.length + ' included';
+    var ca = $('check-all');
+    var n = S.shown.filter(function(i){ return S.selected.has(S.campList[i].key); }).length;
+    ca.checked = n > 0 && n === S.shown.length;
+    ca.indeterminate = n > 0 && n < S.shown.length;
+    ca.disabled = !S.shown.length;
+  }
+
+  function deltaHtml(r, nv){
+    if (!r.old) return '-';
+    var d = (nv - r.old) / r.old * 100;
+    return '<span class="' + (d >= 0 ? 'd-up' : 'd-down') + '">' + (d >= 0 ? '+' : '') + d.toFixed(1) + '%</span>';
+  }
+  function renderPreview(eligible){
+    var ch = S.changes;
+    var camps = new Set(); var sumO = 0, sumN = 0, n = 0;
+    ch.forEach(function(x){ camps.add(x.r.key); if (x.r.cat !== 'place'){ sumO += x.r.old; sumN += x.nv; n++; } });
+    $('s-bids').innerHTML = fmtInt(ch.length) + ' <small>of ' + fmtInt(eligible) + ' eligible</small>';
+    $('s-camps').innerHTML = fmtInt(camps.size) + ' <small>of ' + fmtInt(S.campList.length) + '</small>';
+    $('s-avg').innerHTML = n ? fmt(sumO / n) + ' <small>to</small> ' + fmt(sumN / n) : '-';
+    var rows = ch.slice(0, MAX_ROWS).map(function(x){
+      var r = x.r, camp = S.camps.get(r.key);
+      var kind = r.cat === 'target' ? r.ent : r.cat === 'group' ? 'Ad group' : 'Placement';
+      var u = r.cat === 'place' ? '%' : '';
+      return '<tr><td class="name">' + esc(camp ? camp.name : '') + '</td><td class="name">' + esc(r.label) + (r.sub ? ' <span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(kind) + '</td>' +
+        '<td class="num">' + (r.cat === 'place' ? r.old : fmt(r.old)) + u + '</td><td class="num">' + (r.cat === 'place' ? x.nv : fmt(x.nv)) + u + '</td><td class="num">' + deltaHtml(r, x.nv) + '</td></tr>';
+    }).join('');
+    $('prev').innerHTML = rows || '<tr><td colspan="6" class="empty">Nothing would change. Check the campaigns, the bid types and the percentage.</td></tr>';
+    $('prevnote').textContent = ch.length > MAX_ROWS ? 'Showing first ' + MAX_ROWS + ' of ' + fmtInt(ch.length) + ' changes' : '';
+    $('dl-xlsx').disabled = !ch.length; $('dl-csv').disabled = !ch.length;
+  }
+  function renderExample(){
+    var old = 0.80, nv = calcNew({cat:'target', old:old});
+    $('example').innerHTML = 'A ' + fmt(old) + ' bid becomes <b>' + fmt(nv) + '</b>';
+  }
+
+  /* ---------- export ---------- */
+  function outName(ext){
+    var base = S.isSample ? 'example' : S.fileName.replace(/\.[^.]+$/, '');
+    return base + '-bid-update.' + ext;
+  }
+  function buildWorkbook(){
+    var wb = XL.utils.book_new(), by = new Map();
+    S.changes.forEach(function(ch){ if (!by.has(ch.r.si)) by.set(ch.r.si, []); by.get(ch.r.si).push(ch); });
+    Array.from(by.keys()).sort(function(a,b){ return a - b; }).forEach(function(si){
+      var sh = S.sheets[si], rows = [sh.aoa[sh.h]];
+      by.get(si).forEach(function(ch){
+        var row = sh.aoa[ch.r.ri].slice();
+        row[sh.c.operation] = 'Update';
+        row[ch.r.col] = ch.nv;
+        rows.push(row);
+      });
+      XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), sh.name.slice(0, 31));
+    });
+    return wb;
+  }
+  function csvCell(v){ v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function buildCsv(){
+    var lines = [['Campaign','Type','Entity','Target','Match / Placement','Current','New','Change %'].join(',')];
+    S.changes.forEach(function(x){
+      var r = x.r, camp = S.camps.get(r.key);
+      lines.push([camp ? camp.name : '', camp ? camp.tag : '', r.ent, r.label, r.sub, r.old, x.nv, r.old ? ((x.nv - r.old) / r.old * 100).toFixed(1) : ''].map(csvCell).join(','));
+    });
+    return lines.join('\n');
+  }
+  async function download(kind){
+    if (!S.changes.length) return;
+    if (!DL){
+      try { DL = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { DL = null; }
+    }
+    if (!DL){ setStatus('Saving files is not available in this view. Open the page in claude.ai to download.', 'warn'); return; }
+    try {
+      var data = kind === 'xlsx' ? new Blob([XL.write(buildWorkbook(), {bookType:'xlsx', type:'array'})]) : buildCsv();
+      var name = outName(kind);
+      await DL.save({filename:name, data:data});
+      setStatus('Saved ' + name + ' with ' + fmtInt(S.changes.length) + ' updated bids.', 'ok');
+    } catch (e) {
+      if (e && e.code === 'declined') setStatus('Download cancelled.');
+      else setStatus('Could not save the file' + (e && e.message ? ': ' + e.message : '.'), 'warn');
+    }
+  }
+
+  /* ---------- events ---------- */
+  function readSettings(){
+    cfg.mode = document.querySelector('input[name=mode]:checked').value;
+    $('uniform').hidden = cfg.mode !== 'same'; $('rules').hidden = cfg.mode !== 'rules';
+    cfg.dir = document.querySelector('input[name=dir]:checked').value;
+    var p = parseFloat($('pct').value); cfg.pct = isFinite(p) && p > 0 ? p : 0;
+    cfg.cats.target = $('cat-target').checked; cfg.cats.group = $('cat-group').checked; cfg.cats.place = $('cat-place').checked;
+    cfg.enabled = $('st-enabled').checked; cfg.paused = $('st-paused').checked;
+    var mn = parseFloat($('minbid').value), mx = parseFloat($('maxbid').value);
+    cfg.min = isFinite(mn) ? mn : null; cfg.max = isFinite(mx) ? mx : null;
+    Array.prototype.forEach.call($('chips').children, function(b){ b.setAttribute('aria-pressed', String(parseFloat(b.dataset.v) === cfg.pct)); });
+    compute();
+  }
+  var chips = [5,10,15,20,25,50];
+  $('chips').innerHTML = chips.map(function(v){ return '<button type="button" class="chip" data-v="' + v + '" aria-pressed="false">' + v + '%</button>'; }).join('');
+  $('chips').addEventListener('click', function(e){
+    var b = e.target.closest('.chip'); if (!b) return;
+    $('pct').value = b.dataset.v; readSettings();
+  });
+  ['mode-same','mode-rules','dir-up','dir-down','pct','cat-target','cat-group','cat-place','st-enabled','st-paused','minbid','maxbid'].forEach(function(id){
+    $(id).addEventListener(id === 'pct' || id === 'minbid' || id === 'maxbid' ? 'input' : 'change', readSettings);
+  });
+
+  $('camps').addEventListener('change', function(e){
+    var tr = e.target.closest('tr'); if (!tr || e.target.type !== 'checkbox') return;
+    var c = S.campList[Number(tr.dataset.i)];
+    if (e.target.checked) S.selected.add(c.key); else S.selected.delete(c.key);
+    tr.classList.toggle('off', !e.target.checked);
+    renderCampCount(); compute();
+  });
+  $('camps').addEventListener('click', function(e){
+    if (e.target.type === 'checkbox') return;
+    var ag = e.target.closest('.agbtn');
+    if (ag){
+      var ak = ag.dataset.ak;
+      if (S.openAg.has(ak)) S.openAg.delete(ak); else S.openAg.add(ak);
+      renderCamps();
+      var again = Array.prototype.find.call(document.querySelectorAll('#camps .agbtn'), function(b){ return b.dataset.ak === ak; });
+      if (again) again.focus({preventScroll:true});
+      return;
+    }
+    if (e.target.closest('tr.detail')) return;
+    var tr = e.target.closest('tr'); if (!tr || tr.dataset.i === undefined) return;
+    var c = S.campList[Number(tr.dataset.i)];
+    if (S.open.has(c.key)) S.open.delete(c.key); else S.open.add(c.key);
+    renderCamps();
+    var row = document.querySelector('#camps tr[data-i="' + tr.dataset.i + '"] .expand');
+    if (row) row.focus({preventScroll:true});
+  });
+  ['q','f-state','f-type'].forEach(function(id){ $(id).addEventListener('input', renderCamps); });
+  function setShown(on){
+    S.shown.forEach(function(i){ var k = S.campList[i].key; if (on) S.selected.add(k); else S.selected.delete(k); });
+    renderCamps(); compute();
+  }
+  $('select-all').addEventListener('click', function(){
+    S.campList.forEach(function(c){ S.selected.add(c.key); });
+    renderCamps(); compute();
+  });
+  $('deselect-all').addEventListener('click', function(){
+    S.selected.clear();
+    renderCamps(); compute();
+  });
+  $('check-all').addEventListener('change', function(){ setShown(this.checked); });
+
+  $('dl-xlsx').addEventListener('click', function(){ download('xlsx'); });
+  $('dl-csv').addEventListener('click', function(){ download('csv'); });
+
+  function readPerf(){
+    var x = parseFloat($('pf-v').value);
+    cfg.perf = {m:$('pf-m').value, op:$('pf-op').value, v:isFinite(x) ? x : null};
+    renderCamps();
+  }
+  ['pf-m','pf-op','pf-v'].forEach(function(id){ $(id).addEventListener('input', readPerf); });
+  $('pf-only').addEventListener('click', function(){
+    S.selected = new Set(S.shown.map(function(i){ return S.campList[i].key; }));
+    renderCamps(); compute();
+  });
+  var rl = $('rulelist');
+  function ruleEdited(){ readRules(); compute(); }
+  rl.addEventListener('input', ruleEdited);
+  rl.addEventListener('change', ruleEdited);
+  rl.addEventListener('click', function(e){
+    var b = e.target.closest('[data-del]'); if (!b) return;
+    var i = Number(b.closest('.rule').dataset.r);
+    readRules(); cfg.rules.splice(i, 1); renderRules(); compute();
+  });
+  $('addrule').addEventListener('click', function(){
+    readRules();
+    cfg.rules.push({c:[{m:'clicks', op:'ge', v:null}, {m:'', op:'ge', v:null}], dir:'up', pct:10});
+    renderRules(); compute();
+  });
+
+  async function loadFile(file){
+    if (!file) return;
+    try {
+      var buf = await file.arrayBuffer();
+      var wb = XL.read(buf, {type:'array'});
+      ingest(wb, file.name, false);
+    } catch (e) {
+      showErr('That file could not be read. Use an .xlsx, .xls or .csv bulk operations file.');
+    }
+  }
+  $('pick').addEventListener('click', function(){ $('file').click(); });
+  $('file').addEventListener('change', function(e){ loadFile(e.target.files[0]); e.target.value = ''; });
+  var drop = $('drop');
+  ['dragenter','dragover'].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave','drop'].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function(e){ loadFile(e.dataTransfer.files[0]); });
+
+  /* ---------- start ---------- */
+  $('pf-m').innerHTML = metricOptions('', 'No filter');
+  renderRules();
+  ingest(sampleWorkbook(), 'Example bulk file.xlsx', true);
+  readSettings();
+  (async function(){
+    try { DL = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { DL = null; }
+  })();
+})();
+</script>
+
+</body></html>
