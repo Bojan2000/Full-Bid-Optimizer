@@ -123,7 +123,7 @@ tr.detail > td{padding:0; background:var(--bg)}
 .agname{font-weight:500; overflow-wrap:anywhere}
 .agmeta{color:var(--muted); font-size:12.5px; font-family:var(--font-mono); margin-left:auto}
 .ag .scroll{border-top:1px solid var(--line); max-height:280px}
-.ag table,.pl table{min-width:480px}
+.ag table,.pl table{min-width:720px}
 .sub{font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:6px 2px 0}
 .pl{background:var(--surface); border:1px solid var(--line); border-radius:6px}
 .muted{color:var(--muted)}
@@ -148,9 +148,9 @@ tr.detail > td{padding:0; background:var(--bg)}
 .act .pill{margin-left:6px; white-space:nowrap}
 #camptable td.num{white-space:nowrap}
 .rule{border:1px solid var(--line); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px; background:var(--bg)}
-.rule select,.rule input{padding:6px 7px}
-.rline{display:grid; grid-template-columns:38px minmax(0,1fr) 54px 72px; gap:6px; align-items:center}
-.rthen{display:grid; grid-template-columns:38px minmax(0,1fr) 84px 32px; gap:6px; align-items:center}
+.rule select,.rule input{padding:6px 5px; font-size:13px}
+.rline{display:grid; grid-template-columns:34px minmax(0,1fr) 46px 64px; gap:6px; align-items:center}
+.rthen{display:grid; grid-template-columns:34px minmax(0,1fr) 84px 32px; gap:6px; align-items:center}
 .rline .w,.rthen .w{font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
 .rule .pct input{padding-right:24px; font-size:14px}
 .rule .pct span{right:8px}
@@ -213,6 +213,16 @@ tr.detail > td{padding:0; background:var(--bg)}
           <input type="radio" name="mode" id="mode-rules" value="rules">
           <label class="neutral" for="mode-rules">By performance</label>
         </div>
+        <div class="stack">
+          <span class="label">Judge performance by</span>
+          <div class="seg" role="radiogroup" aria-label="Level used for performance tests">
+            <input type="radio" name="level" id="lvl-target" value="target" checked>
+            <label class="neutral" for="lvl-target">Each target</label>
+            <input type="radio" name="level" id="lvl-camp" value="camp">
+            <label class="neutral" for="lvl-camp">Whole campaign</label>
+          </div>
+          <p class="hint" id="lvlhint"></p>
+        </div>
         <div class="stack" id="uniform">
         <div class="seg" role="radiogroup" aria-label="Direction">
           <input type="radio" name="dir" id="dir-up" value="up" checked>
@@ -223,9 +233,15 @@ tr.detail > td{padding:0; background:var(--bg)}
         <div class="pct"><input id="pct" type="number" inputmode="decimal" min="0" max="1000" step="0.1" value="10" aria-label="Percent change"><span>%</span></div>
         <div class="chips" id="chips"></div>
         <div class="example" id="example"></div>
+        <span class="label">Only change bids where</span>
+        <div class="rule" id="onlyif">
+          <div class="rline"><span class="w">If</span><select id="oc-m1" aria-label="Condition metric"></select><select id="oc-op1" aria-label="Condition comparison"><option value="ge">&ge;</option><option value="le">&le;</option><option value="eq" selected>=</option></select><input id="oc-v1" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Condition value"></div>
+          <div class="rline"><span class="w">And</span><select id="oc-m2" aria-label="Second condition metric"></select><select id="oc-op2" aria-label="Second condition comparison"><option value="ge">&ge;</option><option value="le">&le;</option><option value="eq">=</option></select><input id="oc-v2" type="number" inputmode="decimal" step="any" aria-label="Second condition value"></div>
+          <div class="rcount" id="oc-count">Leave on "Any bid" to change every bid.</div>
+        </div>
         </div>
         <div class="stack" id="rules" hidden>
-          <p class="hint">Each campaign gets the first rule it matches, top to bottom. Campaigns that match no rule stay unchanged. The two rules below are examples, so edit them to suit your targets.</p>
+          <p class="hint">Each bid gets the first rule it matches, top to bottom. Bids that match no rule stay unchanged. The three rules below are examples, so edit them to suit your targets.</p>
           <div class="stack" id="rulelist"></div>
           <button class="btn small" type="button" id="addrule">Add rule</button>
           <div class="hint" id="rulenone"></div>
@@ -275,7 +291,7 @@ tr.detail > td{padding:0; background:var(--bg)}
           </div>
         </div>
         <div class="toolbar2">
-          <span class="label">Performance</span>
+          <span class="label">Campaign performance</span>
           <select id="pf-m" aria-label="Metric to filter by"></select>
           <select id="pf-op" aria-label="Comparison"><option value="ge" title="at least">&ge;</option><option value="le" title="at most">&le;</option><option value="eq" title="exactly">=</option></select>
           <input type="number" id="pf-v" inputmode="decimal" step="any" placeholder="Value" aria-label="Value to compare with">
@@ -303,7 +319,7 @@ tr.detail > td{padding:0; background:var(--bg)}
         </div>
         <div class="scroll">
           <table>
-            <thead><tr><th>Campaign</th><th>Target</th><th>Kind</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead>
+            <thead><tr><th>Campaign</th><th>Target</th><th>Kind</th><th class="num">Impr.</th><th class="num">Clicks</th><th class="num">Orders</th><th class="num">ACOS</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead>
             <tbody id="prev"></tbody>
           </table>
         </div>
@@ -331,10 +347,11 @@ tr.detail > td{padding:0; background:var(--bg)}
   var $ = function(id){ return document.getElementById(id); };
   var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var S = { fileName:'', isSample:false, sheets:[], campList:[], camps:new Map(), selected:new Set(), records:[], shown:[], changes:[] };
-  var cfg = { mode:'same', perf:{m:'', op:'ge', v:null},
+  var cfg = { mode:'same', level:'target', cond:[{m:'', op:'eq', v:null}, {m:'', op:'ge', v:null}], perf:{m:'', op:'ge', v:null},
     rules:[
       {c:[{m:'acos', op:'ge', v:40}, {m:'', op:'ge', v:null}], dir:'down', pct:15},
-      {c:[{m:'orders', op:'ge', v:3}, {m:'acos', op:'le', v:25}], dir:'up', pct:10}
+      {c:[{m:'orders', op:'ge', v:3}, {m:'acos', op:'le', v:25}], dir:'up', pct:10},
+      {c:[{m:'impr', op:'eq', v:0}, {m:'', op:'ge', v:null}], dir:'up', pct:20}
     ],
     dir:'up', pct:10, cats:{target:true, group:false, place:false}, enabled:true, paused:true, min:0.02, max:null };
   var MAX_ROWS = 200;
@@ -346,6 +363,11 @@ tr.detail > td{padding:0; background:var(--bg)}
   function firstText(r, cols){ for (var i=0;i<cols.length;i++){ if (cols[i] < 0) continue; var v = r[cols[i]]; if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim(); } return ''; }
 
   /* ---------- parsing ---------- */
+  function rowM(r, c){
+    var m = {};
+    ['impr','clicks','orders','spend','sales'].forEach(function(k){ var cc = c[k]; m[k] = (cc >= 0 && isNum(r[cc])) ? Number(r[cc]) : null; });
+    return m;
+  }
   /* Amazon's files often declare a one-row sheet size (A1:BB1) while the data runs for thousands of rows.
      Rebuild the real range from the cells that exist. */
   function fixRange(ws){
@@ -435,7 +457,7 @@ tr.detail > td{padding:0; background:var(--bg)}
         if (cat === 'target'){ camp.tN++; camp.tSum += old; }
         var agn = firstText(r, c.agNames);
         var agid = c.agId >= 0 ? String(r[c.agId] === undefined ? '' : r[c.agId]).trim() : '';
-        records.push({si:si, ri:i, cat:cat, key:key, ent:ent, label:label, sub:sub, state:rowState, old:old, col:col, ag:(cat === 'place' ? '' : (agid || agn)), agName:agn});
+        records.push({si:si, ri:i, cat:cat, key:key, ent:ent, label:label, sub:sub, state:rowState, old:old, col:col, ag:(cat === 'place' ? '' : (agid || agn)), agName:agn, m:rowM(r, c)});
       }
     });
     var list = Array.from(camps.values()).filter(function(x){ return x.total > 0; });
@@ -505,6 +527,12 @@ tr.detail > td{padding:0; background:var(--bg)}
       {Impressions:30500,Clicks:402,Orders:31,Spend:160.2,Sales:820},
       {Impressions:88000,Clicks:760,Orders:12,Spend:412,Sales:550.7}
     ];
+    function met(bid){
+      var imp = rnd() < 0.35 ? 0 : Math.round(rnd() * 4000);
+      var clk = imp ? Math.round(imp * rnd() * 0.03) : 0;
+      var ord = clk ? Math.round(clk * rnd() * 0.25) : 0;
+      return {Impressions:imp, Clicks:clk, Orders:ord, Spend:Math.round(clk * bid * 100) / 100, Sales:ord ? Math.round(ord * (12 + rnd() * 20) * 100) / 100 : 0};
+    }
     var rows = [head], id = 100;
     function mk(o){ rows.push(head.map(function(h){ return o[h] === undefined ? '' : o[h]; })); }
     defs.forEach(function(d, di){
@@ -517,6 +545,7 @@ tr.detail > td{padding:0; background:var(--bg)}
         if (d[3] === 'pt'){ base['Entity'] = 'Product Targeting'; base['Product Targeting ID'] = String(id++); base['Product Targeting Expression'] = 'asin="' + k.toUpperCase() + '"'; }
         else if (d[3] === 'auto'){ base['Entity'] = 'Product Targeting'; base['Product Targeting ID'] = String(id++); base['Product Targeting Expression'] = ['close-match','loose-match','substitutes','complements'][Math.floor(rnd()*4)]; }
         else { base['Entity'] = 'Keyword'; base['Keyword ID'] = String(id++); base['Keyword Text'] = k; base['Match Type'] = d[3]; }
+        Object.assign(base, met(base.Bid));
         mk(base);
       });
       [['Placement Top',[25,40,60,30][di % 4]],['Placement Product Page',[10,0,15,20][di % 4]]].forEach(function(pl){
@@ -529,6 +558,7 @@ tr.detail > td{padding:0; background:var(--bg)}
       sb.push(head.map(function(h){ return (Object.assign({'Product':'Sponsored Brands','Entity':'Campaign','Operation':'Update','Campaign ID':cid,'Campaign Name (Informational only)':d[0],'State':d[1]}, SBM[di]))[h] || ''; }));
       d[2].forEach(function(k){
         var o = {'Product':'Sponsored Brands','Entity':'Keyword','Operation':'Update','Campaign ID':cid,'Ad Group ID':String(4000 + di),'Keyword ID':String(id++),'Campaign Name (Informational only)':d[0],'State':d[1],'Bid':Math.round(d[3] * (0.8 + rnd() * 0.5) * 100) / 100,'Keyword Text':k,'Match Type':'phrase'};
+        Object.assign(o, met(o.Bid));
         sb.push(head.map(function(h){ return o[h] === undefined ? '' : o[h]; }));
       });
     });
@@ -590,12 +620,6 @@ tr.detail > td{padding:0; background:var(--bg)}
     return -1;
   }
   function stateOk(c){ var st = c.state; return !(st === 'archived' || (st === 'enabled' && !cfg.enabled) || (st === 'paused' && !cfg.paused)); }
-  function actPill(c){
-    if (cfg.mode !== 'rules' || !S.selected.has(c.key) || !stateOk(c)) return '';
-    var i = ruleIdx(c); if (i < 0) return '';
-    var rl = cfg.rules[i];
-    return '<span class="pill ' + rl.dir + '">' + (rl.dir === 'up' ? '+' : '-') + rl.pct + '%</span>';
-  }
   function refreshActs(){
     Array.prototype.forEach.call(document.querySelectorAll('#camps tr[data-i]'), function(tr){
       var a = tr.querySelector('.act'); if (a) a.innerHTML = actPill(S.campList[Number(tr.dataset.i)]);
@@ -633,46 +657,86 @@ tr.detail > td{padding:0; background:var(--bg)}
     });
     cfg.rules = out;
   }
+
+  function condActive(){ return cfg.cond.some(validCond); }
+  function condPass(subj){
+    for (var i = 0; i < cfg.cond.length; i++){
+      var cd = cfg.cond[i];
+      if (validCond(cd) && !cmp(mval(subj, cd.m), cd.op, cd.v)) return false;
+    }
+    return true;
+  }
+  function inScope(r){
+    if (!cfg.cats[r.cat] || !S.selected.has(r.key)) return false;
+    var camp = S.camps.get(r.key);
+    var st = (r.state || (camp && camp.state) || '').toLowerCase();
+    if (st === 'archived') return false;
+    if (st === 'enabled' && !cfg.enabled) return false;
+    if (st === 'paused' && !cfg.paused) return false;
+    return true;
+  }
+  /* The thing whose numbers decide: the bid's own row (target level) or its campaign. */
+  function subjectOf(r){ return cfg.level === 'target' ? r : S.camps.get(r.key); }
+  function metricCells(r){
+    return ['impr','clicks','orders','acos'].map(function(k){ return '<td class="num">' + mshow(r, k) + '</td>'; }).join('');
+  }
+  function rawM(r, k){
+    var v = mval(r, k); if (v === null) return '';
+    if (v === Infinity) return 'no sales';
+    return k === 'acos' ? v.toFixed(1) : v;
+  }
+  function actPill(c){
+    if (!(cfg.mode === 'rules' || condActive()) || !S.chc) return '';
+    var x = S.chc.get(c.key); if (!x) return '';
+    return (x.up ? '<span class="pill up">&uarr;' + x.up + '</span>' : '') + (x.down ? '<span class="pill down">&darr;' + x.down + '</span>' : '');
+  }
   function updateRuleCounts(){
-    var counts = cfg.rules.map(function(){ return 0; }), none = 0, incl = 0;
-    S.campList.forEach(function(c){
-      if (!S.selected.has(c.key) || !stateOk(c)) return;
-      incl++;
-      var i = ruleIdx(c);
-      if (i < 0) none++; else counts[i]++;
+    var rc = cfg.rules.map(function(){ return {bids:0, camps:new Set()}; }), none = 0, scope = 0, pass = 0;
+    S.records.forEach(function(r){
+      if (!inScope(r)) return;
+      scope++;
+      var subj = subjectOf(r);
+      if (cfg.mode === 'rules'){
+        var i = ruleIdx(subj);
+        if (i < 0) none++; else { rc[i].bids++; rc[i].camps.add(r.key); }
+      } else if (condPass(subj)) pass++;
     });
     Array.prototype.forEach.call($('rulelist').querySelectorAll('.rule'), function(el, i){
       var rl = cfg.rules[i], n = el.querySelector('[data-count]');
       if (!rl || !n) return;
-      n.textContent = (validCond(rl.c[0]) && rl.pct > 0) ? fmtInt(counts[i]) + ' campaign' + (counts[i] === 1 ? '' : 's') + ' use this rule' : 'Enter a value and a percentage to use this rule.';
+      var b = rc[i].bids, k = rc[i].camps.size;
+      n.textContent = (validCond(rl.c[0]) && rl.pct > 0) ? fmtInt(b) + ' bid' + (b === 1 ? '' : 's') + ' in ' + fmtInt(k) + ' campaign' + (k === 1 ? '' : 's') + ' use this rule' : 'Enter a value and a percentage to use this rule.';
     });
-    $('rulenone').textContent = fmtInt(none) + ' of ' + fmtInt(incl) + ' included campaigns match no rule and stay unchanged.';
+    $('rulenone').textContent = fmtInt(none) + ' of ' + fmtInt(scope) + ' selected bids match no rule and stay unchanged.';
+    $('oc-count').textContent = condActive() ? fmtInt(pass) + ' of ' + fmtInt(scope) + ' selected bids match' : 'Leave on "Any bid" to change every bid.';
   }
 
-  /* Returns {nv} when this bid is in scope under the current settings, otherwise null. */
+  /* Returns {nv} when this bid is in scope and passes the performance test, otherwise null. */
   function evalRecord(r){
-    if (!cfg.cats[r.cat] || !S.selected.has(r.key)) return null;
-    var camp = S.camps.get(r.key);
-    var st = (r.state || (camp && camp.state) || '').toLowerCase();
-    if (st === 'archived') return null;
-    if (st === 'enabled' && !cfg.enabled) return null;
-    if (st === 'paused' && !cfg.paused) return null;
+    if (!inScope(r)) return null;
+    var subj = subjectOf(r);
     if (cfg.mode === 'rules'){
-      var ri = ruleIdx(camp);
+      var ri = ruleIdx(subj);
       if (ri < 0) return null;
       return {nv: calcNew(r, cfg.rules[ri].dir, cfg.rules[ri].pct)};
     }
+    if (!condPass(subj)) return null;
     return {nv: calcNew(r)};
   }
 
   function compute(){
     var changes = [], eligible = 0, counts = {target:0, group:0, place:0};
+    S.chc = new Map();
     S.records.forEach(function(r){
       counts[r.cat]++;
       var ev = evalRecord(r);
       if (!ev) return;
       eligible++;
-      if (ev.nv !== r.old) changes.push({r:r, nv:ev.nv});
+      if (ev.nv !== r.old){
+        changes.push({r:r, nv:ev.nv});
+        var x = S.chc.get(r.key); if (!x){ x = {up:0, down:0}; S.chc.set(r.key, x); }
+        if (ev.nv > r.old) x.up++; else x.down++;
+      }
     });
     S.changes = changes;
     if (S.open && S.open.size) renderCamps(); else refreshActs();
@@ -747,7 +811,8 @@ tr.detail > td{padding:0; background:var(--bg)}
     if (!n){ return out + '<div class="muted">No bids in this campaign.</div></div></td></tr>'; }
     n.groups.forEach(function(g, gk){
       var ak = c.key + '||' + gk, open = S.openAg.has(ak);
-      var meta = fmtInt(g.targets.length) + ' target' + (g.targets.length === 1 ? '' : 's');
+      var nch = g.targets.filter(function(r){ var e = evalRecord(r); return e && e.nv !== r.old; }).length;
+      var meta = fmtInt(g.targets.length) + ' target' + (g.targets.length === 1 ? '' : 's') + (nch ? ' · ' + fmtInt(nch) + ' change' : '');
       if (g.gr){
         var ev = evalRecord(g.gr);
         meta += ' · default bid ' + fmt(g.gr.old) + (ev && ev.nv !== g.gr.old ? ' to ' + fmt(ev.nv) : '');
@@ -755,17 +820,17 @@ tr.detail > td{padding:0; background:var(--bg)}
       out += '<div class="ag"><button type="button" class="agbtn" data-ak="' + esc(ak) + '" aria-expanded="' + open + '"><span class="chev" aria-hidden="true">&#9656;</span><span class="agname">' + esc(g.name) + '</span>' +
         (g.state ? '<span class="pill ' + esc(g.state) + '">' + esc(g.state) + '</span>' : '') + '<span class="agmeta">' + meta + '</span></button>';
       if (open){
-        out += '<div class="scroll"><table><thead><tr><th>Target</th><th>Match</th><th>Kind</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>';
+        out += '<div class="scroll"><table><thead><tr><th>Target</th><th>Match</th><th>Kind</th><th class="num">Impr.</th><th class="num">Clicks</th><th class="num">Orders</th><th class="num">ACOS</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>';
         out += g.targets.map(function(r){
-          return '<tr><td class="name">' + esc(r.label) + '</td><td>' + (r.sub ? '<span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(r.ent) + '</td><td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>';
-        }).join('') || '<tr><td colspan="6" class="empty">No keywords or product targets in this ad group.</td></tr>';
+          return '<tr><td class="name">' + esc(r.label) + '</td><td>' + (r.sub ? '<span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(r.ent) + '</td>' + metricCells(r) + '<td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>';
+        }).join('') || '<tr><td colspan="10" class="empty">No keywords or product targets in this ad group.</td></tr>';
         out += '</tbody></table></div>';
       }
       out += '</div>';
     });
     if (n.places.length){
-      out += '<div class="sub">Placement modifiers</div><div class="pl scroll"><table><thead><tr><th>Placement</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>' +
-        n.places.map(function(r){ return '<tr><td>' + esc(r.label) + '</td><td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>'; }).join('') + '</tbody></table></div>';
+      out += '<div class="sub">Placement modifiers</div><div class="pl scroll"><table><thead><tr><th>Placement</th><th class="num">Impr.</th><th class="num">Clicks</th><th class="num">Orders</th><th class="num">ACOS</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead><tbody>' +
+        n.places.map(function(r){ return '<tr><td>' + esc(r.label) + '</td>' + metricCells(r) + '<td class="num">' + oldVal(r) + '</td>' + newCell(r) + '</tr>'; }).join('') + '</tbody></table></div>';
     }
     return out + '</div></td></tr>';
   }
@@ -795,10 +860,10 @@ tr.detail > td{padding:0; background:var(--bg)}
       var r = x.r, camp = S.camps.get(r.key);
       var kind = r.cat === 'target' ? r.ent : r.cat === 'group' ? 'Ad group' : 'Placement';
       var u = r.cat === 'place' ? '%' : '';
-      return '<tr><td class="name">' + esc(camp ? camp.name : '') + '</td><td class="name">' + esc(r.label) + (r.sub ? ' <span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(kind) + '</td>' +
+      return '<tr><td class="name">' + esc(camp ? camp.name : '') + '</td><td class="name">' + esc(r.label) + (r.sub ? ' <span class="pill">' + esc(r.sub) + '</span>' : '') + '</td><td>' + esc(kind) + '</td>' + metricCells(r) +
         '<td class="num">' + (r.cat === 'place' ? r.old : fmt(r.old)) + u + '</td><td class="num">' + (r.cat === 'place' ? x.nv : fmt(x.nv)) + u + '</td><td class="num">' + deltaHtml(r, x.nv) + '</td></tr>';
     }).join('');
-    $('prev').innerHTML = rows || '<tr><td colspan="6" class="empty">Nothing would change. Check the campaigns, the bid types and the percentage.</td></tr>';
+    $('prev').innerHTML = rows || '<tr><td colspan="10" class="empty">Nothing would change. Check the campaigns, the bid types and the percentage.</td></tr>';
     $('prevnote').textContent = ch.length > MAX_ROWS ? 'Showing first ' + MAX_ROWS + ' of ' + fmtInt(ch.length) + ' changes' : '';
     $('dl-xlsx').disabled = !ch.length; $('dl-ucsv').disabled = !ch.length; $('dl-csv').disabled = !ch.length;
     $('dsum').innerHTML = ch.length ? '<b>' + fmtInt(ch.length) + '</b> bids in <b>' + fmtInt(camps.size) + '</b> campaigns will change' : 'Nothing to download yet. Pick campaigns and a change.';
@@ -832,10 +897,10 @@ tr.detail > td{padding:0; background:var(--bg)}
   }
   function csvCell(v){ v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function buildCsv(){
-    var lines = [['Campaign','Type','Entity','Target','Match / Placement','Current','New','Change %'].join(',')];
+    var lines = [['Campaign','Type','Entity','Target','Match / Placement','Current','New','Change %','Impressions','Clicks','Orders','ACOS %'].join(',')];
     S.changes.forEach(function(x){
       var r = x.r, camp = S.camps.get(r.key);
-      lines.push([camp ? camp.name : '', camp ? camp.tag : '', r.ent, r.label, r.sub, r.old, x.nv, r.old ? ((x.nv - r.old) / r.old * 100).toFixed(1) : ''].map(function(v){ return csvCell(v); }).join(','));
+      lines.push([camp ? camp.name : '', camp ? camp.tag : '', r.ent, r.label, r.sub, r.old, x.nv, r.old ? ((x.nv - r.old) / r.old * 100).toFixed(1) : '', rawM(r,'impr'), rawM(r,'clicks'), rawM(r,'orders'), rawM(r,'acos')].map(function(v){ return csvCell(v); }).join(','));
     });
     return lines.join('\n');
   }
@@ -905,6 +970,9 @@ tr.detail > td{padding:0; background:var(--bg)}
   function readSettings(){
     cfg.mode = document.querySelector('input[name=mode]:checked').value;
     $('uniform').hidden = cfg.mode !== 'same'; $('rules').hidden = cfg.mode !== 'rules';
+    cfg.level = document.querySelector('input[name=level]:checked').value;
+    $('lvlhint').textContent = cfg.level === 'target' ? 'Each keyword or product target is judged by its own impressions, clicks, orders and ACOS. Ad group and placement bids use their own numbers.' : 'Every bid in a campaign is judged by that campaign\'s totals.';
+    cfg.cond = [1, 2].map(function(n){ var x = parseFloat($('oc-v' + n).value); return {m:$('oc-m' + n).value, op:$('oc-op' + n).value, v:isFinite(x) ? x : null}; });
     cfg.dir = document.querySelector('input[name=dir]:checked').value;
     var p = parseFloat($('pct').value); cfg.pct = isFinite(p) && p > 0 ? p : 0;
     cfg.cats.target = $('cat-target').checked; cfg.cats.group = $('cat-group').checked; cfg.cats.place = $('cat-place').checked;
@@ -920,8 +988,8 @@ tr.detail > td{padding:0; background:var(--bg)}
     var b = e.target.closest('.chip'); if (!b) return;
     $('pct').value = b.dataset.v; readSettings();
   });
-  ['mode-same','mode-rules','dir-up','dir-down','pct','cat-target','cat-group','cat-place','st-enabled','st-paused','minbid','maxbid'].forEach(function(id){
-    $(id).addEventListener(id === 'pct' || id === 'minbid' || id === 'maxbid' ? 'input' : 'change', readSettings);
+  ['mode-same','mode-rules','lvl-target','lvl-camp','oc-m1','oc-op1','oc-v1','oc-m2','oc-op2','oc-v2','dir-up','dir-down','pct','cat-target','cat-group','cat-place','st-enabled','st-paused','minbid','maxbid'].forEach(function(id){
+    $(id).addEventListener(id === 'pct' || id === 'minbid' || id === 'maxbid' || id.indexOf('oc-v') === 0 ? 'input' : 'change', readSettings);
   });
 
   $('camps').addEventListener('change', function(e){
@@ -1013,6 +1081,8 @@ tr.detail > td{padding:0; background:var(--bg)}
 
   /* ---------- start ---------- */
   $('pf-m').innerHTML = metricOptions('', 'No filter');
+  $('oc-m1').innerHTML = metricOptions('', 'Any bid');
+  $('oc-m2').innerHTML = metricOptions('', 'None');
   renderRules();
   ingest(sampleWorkbook(), 'Example bulk file.xlsx', true);
   readSettings();
