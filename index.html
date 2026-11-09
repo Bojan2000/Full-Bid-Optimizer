@@ -1,6 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
 <title>Bulk Bid Shifter</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: one control rail on the left; on the right the campaign picker sits above a live preview of every bid that will change. Stacks to one column on phones. */
@@ -28,7 +32,7 @@
 *{box-sizing:border-box}
 body{
   background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.5;
-  padding-block:24px 40px;
+  padding-block:24px 160px;
   padding-left:max(16px, env(safe-area-inset-left, 0px));
   padding-right:max(16px, env(safe-area-inset-right, 0px));
 }
@@ -159,6 +163,16 @@ tr.detail > td{padding:0; background:var(--bg)}
 .toolbar2 #pf-v{width:110px; font-family:var(--font-mono)}
 .toolbar2 .hint{flex:1 1 140px}
 #camptable{min-width:880px}
+.dock{position:fixed; left:0; right:0; bottom:0; z-index:20; background:var(--surface); border-top:1px solid var(--line); box-shadow:0 -4px 16px rgba(0,0,0,.10);
+  padding-top:10px; padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.dockin{max-width:1240px; margin:0 auto; display:flex; gap:8px 16px; flex-wrap:wrap; align-items:center; justify-content:space-between}
+.dsum{font-size:13px; min-width:0; flex:1 1 240px}
+.dsum b{font-family:var(--font-mono); font-weight:500}
+.dockbtns{display:flex; gap:8px; flex-wrap:wrap}
+.dmsg{max-width:1240px; margin:8px auto 0; font-size:13px; display:flex; gap:6px 10px; flex-wrap:wrap; align-items:baseline}
+.dmsg .status{flex:0 1 auto}
+#dlink a{color:var(--accent); font-weight:600; overflow-wrap:anywhere}
 @media (max-width:900px){
   .layout{grid-template-columns:minmax(0,1fr)}
   .toolbar{grid-template-columns:1fr 1fr}
@@ -169,6 +183,8 @@ tr.detail > td{padding:0; background:var(--bg)}
 }
 </style>
 
+</head>
+<body>
 <div class="wrap">
   <header>
     <h1>Bulk Bid Shifter</h1>
@@ -285,11 +301,6 @@ tr.detail > td{padding:0; background:var(--bg)}
           <div class="stat"><span class="k">Campaigns affected</span><span class="v" id="s-camps">0</span></div>
           <div class="stat"><span class="k">Average target bid</span><span class="v" id="s-avg">-</span></div>
         </div>
-        <div class="export">
-          <button class="btn primary" type="button" id="dl-xlsx" disabled>Download upload file (.xlsx)</button>
-          <button class="btn" type="button" id="dl-csv" disabled>Change log (.csv)</button>
-          <span class="status" id="status" role="status"></span>
-        </div>
         <div class="scroll">
           <table>
             <thead><tr><th>Campaign</th><th>Target</th><th>Kind</th><th class="num">Current</th><th class="num">New</th><th class="num">Change</th></tr></thead>
@@ -299,6 +310,18 @@ tr.detail > td{padding:0; background:var(--bg)}
       </section>
     </main>
   </div>
+</div>
+
+<div class="dock" id="dock">
+  <div class="dockin">
+    <div class="dsum" id="dsum"></div>
+    <div class="dockbtns">
+      <button class="btn primary" type="button" id="dl-xlsx" disabled>Download upload file (.xlsx)</button>
+      <button class="btn" type="button" id="dl-ucsv" disabled>Upload file as .csv</button>
+      <button class="btn" type="button" id="dl-csv" disabled>Change log (.csv)</button>
+    </div>
+  </div>
+  <div class="dmsg" id="dmsg" hidden><span class="status" id="status" role="status"></span><span id="dlink"></span></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -669,7 +692,11 @@ tr.detail > td{padding:0; background:var(--bg)}
       '<span class="hint">' + fmtInt(S.sheets.length) + ' sheet' + (S.sheets.length === 1 ? '' : 's') + ', ' + fmtInt(S.campList.length) + ' campaigns, ' + fmtInt(nb) + ' bids</span>';
   }
   function showErr(msg){ var e = $('err'); e.hidden = !msg; e.textContent = msg || ''; if (msg && e.scrollIntoView) e.scrollIntoView({block:'nearest'}); }
-  function setStatus(msg, kind){ var s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
+  function setStatus(msg, kind){
+    var s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : '');
+    if (!msg) $('dlink').innerHTML = '';
+    $('dmsg').hidden = !msg && !$('dlink').firstChild;
+  }
 
   function visibleCamps(){
     var q = $('q').value.trim().toLowerCase(), fs = $('f-state').value, ft = $('f-type').value;
@@ -773,7 +800,8 @@ tr.detail > td{padding:0; background:var(--bg)}
     }).join('');
     $('prev').innerHTML = rows || '<tr><td colspan="6" class="empty">Nothing would change. Check the campaigns, the bid types and the percentage.</td></tr>';
     $('prevnote').textContent = ch.length > MAX_ROWS ? 'Showing first ' + MAX_ROWS + ' of ' + fmtInt(ch.length) + ' changes' : '';
-    $('dl-xlsx').disabled = !ch.length; $('dl-csv').disabled = !ch.length;
+    $('dl-xlsx').disabled = !ch.length; $('dl-ucsv').disabled = !ch.length; $('dl-csv').disabled = !ch.length;
+    $('dsum').innerHTML = ch.length ? '<b>' + fmtInt(ch.length) + '</b> bids in <b>' + fmtInt(camps.size) + '</b> campaigns will change' : 'Nothing to download yet. Pick campaigns and a change.';
   }
   function renderExample(){
     var old = 0.80, nv = calcNew({cat:'target', old:old});
@@ -781,20 +809,22 @@ tr.detail > td{padding:0; background:var(--bg)}
   }
 
   /* ---------- export ---------- */
-  function outName(ext){
+  var lastUrl = null;
+  function blankify(row){ return row.map(function(v){ return v === '' ? null : v; }); }
+  function outName(ext, tag){
     var base = S.isSample ? 'example' : S.fileName.replace(/\.[^.]+$/, '');
-    return base + '-bid-update.' + ext;
+    return base + '-' + (tag || 'bid-update') + '.' + ext;
   }
   function buildWorkbook(){
     var wb = XL.utils.book_new(), by = new Map();
     S.changes.forEach(function(ch){ if (!by.has(ch.r.si)) by.set(ch.r.si, []); by.get(ch.r.si).push(ch); });
     Array.from(by.keys()).sort(function(a,b){ return a - b; }).forEach(function(si){
-      var sh = S.sheets[si], rows = [sh.aoa[sh.h]];
+      var sh = S.sheets[si], rows = [blankify(sh.aoa[sh.h])];
       by.get(si).forEach(function(ch){
         var row = sh.aoa[ch.r.ri].slice();
         row[sh.c.operation] = 'Update';
         row[ch.r.col] = ch.nv;
-        rows.push(row);
+        rows.push(blankify(row));
       });
       XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), sh.name.slice(0, 31));
     });
@@ -805,24 +835,69 @@ tr.detail > td{padding:0; background:var(--bg)}
     var lines = [['Campaign','Type','Entity','Target','Match / Placement','Current','New','Change %'].join(',')];
     S.changes.forEach(function(x){
       var r = x.r, camp = S.camps.get(r.key);
-      lines.push([camp ? camp.name : '', camp ? camp.tag : '', r.ent, r.label, r.sub, r.old, x.nv, r.old ? ((x.nv - r.old) / r.old * 100).toFixed(1) : ''].map(csvCell).join(','));
+      lines.push([camp ? camp.name : '', camp ? camp.tag : '', r.ent, r.label, r.sub, r.old, x.nv, r.old ? ((x.nv - r.old) / r.old * 100).toFixed(1) : ''].map(function(v){ return csvCell(v); }).join(','));
     });
     return lines.join('\n');
   }
+  /* Same rows as the .xlsx upload file, as plain text. Only possible when all changes are on one sheet. */
+  function buildUploadCsv(){
+    var by = new Map();
+    S.changes.forEach(function(ch){ if (!by.has(ch.r.si)) by.set(ch.r.si, []); by.get(ch.r.si).push(ch); });
+    if (by.size !== 1) return null;
+    var si = Array.from(by.keys())[0], sh = S.sheets[si];
+    var lines = [sh.aoa[sh.h].map(function(v){ return csvCell(v); }).join(',')];
+    by.get(si).forEach(function(ch){
+      var row = sh.aoa[ch.r.ri].slice();
+      row[sh.c.operation] = 'Update';
+      row[ch.r.col] = ch.nv;
+      lines.push(row.map(function(v){ return csvCell(v); }).join(','));
+    });
+    return lines.join('\r\n');
+  }
+  /* Starts the download and leaves a visible link behind in case the browser ignores the automatic click. */
+  function browserSave(name, blob){
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl = URL.createObjectURL(blob);
+    var box = $('dlink'); box.innerHTML = '';
+    var a = document.createElement('a');
+    a.href = lastUrl; a.download = name; a.textContent = name;
+    box.appendChild(a);
+    $('dmsg').hidden = false;
+    a.click();
+  }
   async function download(kind){
     if (!S.changes.length) return;
-    if (!DL){
-      try { DL = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { DL = null; }
+    if (!DL && window.claude && window.claude.use){
+      try { DL = await window.claude.use('downloads'); } catch (e) { DL = null; }
     }
-    if (!DL){ setStatus('Saving files is not available in this view. Open the page in claude.ai to download.', 'warn'); return; }
+    if (!DL && window.claude && window.claude.use){ setStatus('Saving files is not available in this view. Open the page in claude.ai to download.', 'warn'); return; }
     try {
-      var data = kind === 'xlsx' ? new Blob([XL.write(buildWorkbook(), {bookType:'xlsx', type:'array'})]) : buildCsv();
-      var name = outName(kind);
-      await DL.save({filename:name, data:data});
-      setStatus('Saved ' + name + ' with ' + fmtInt(S.changes.length) + ' updated bids.', 'ok');
+      var name, blob;
+      if (kind === 'xlsx'){
+        if (!XL || !XL.write) throw new Error('the spreadsheet library did not load. Reload the page with an internet connection');
+        var out = XL.write(buildWorkbook(), {bookType:'xlsx', type:'array'});
+        if (!out || !(out.byteLength || out.length)) throw new Error('the spreadsheet came out empty');
+        blob = new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        name = outName('xlsx');
+      } else if (kind === 'ucsv'){
+        var txt = buildUploadCsv();
+        if (txt === null){ setStatus('These changes touch more than one sheet (for example Products and Brands). Use the .xlsx file, or include only one ad type.', 'warn'); return; }
+        blob = new Blob([txt], {type:'text/csv;charset=utf-8'});
+        name = outName('csv');
+      } else {
+        blob = new Blob(['﻿' + buildCsv()], {type:'text/csv;charset=utf-8'});
+        name = outName('csv', 'bid-changes');
+      }
+      if (DL){
+        await DL.save({filename:name, data:blob});
+        setStatus('Saved ' + name + ' with ' + fmtInt(S.changes.length) + ' updated bids.', 'ok');
+      } else {
+        browserSave(name, blob);
+        setStatus('Download started for ' + fmtInt(S.changes.length) + ' updated bids. If nothing happened, click:', 'ok');
+      }
     } catch (e) {
       if (e && e.code === 'declined') setStatus('Download cancelled.');
-      else setStatus('Could not save the file' + (e && e.message ? ': ' + e.message : '.'), 'warn');
+      else setStatus('Could not create the file: ' + (e && e.message ? e.message : 'unknown error') + '. Try the .csv option.', 'warn');
     }
   }
 
@@ -892,6 +967,7 @@ tr.detail > td{padding:0; background:var(--bg)}
 
   $('dl-xlsx').addEventListener('click', function(){ download('xlsx'); });
   $('dl-csv').addEventListener('click', function(){ download('csv'); });
+  $('dl-ucsv').addEventListener('click', function(){ download('ucsv'); });
 
   function readPerf(){
     var x = parseFloat($('pf-v').value);
@@ -945,5 +1021,5 @@ tr.detail > td{padding:0; background:var(--bg)}
   })();
 })();
 </script>
-
-</body></html>
+</body>
+</html>
